@@ -1,0 +1,27 @@
+steps:
+  # 1. Build the Docker container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/cinematch/cinematch-ai:latest', '.']
+
+  # 2. Push the image to Google Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/cinematch/cinematch-ai:latest']
+
+  # 3. Deploy the service directly to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'cinematch-ai-service'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/cinematch/cinematch-ai:latest'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=8080'
+      - '--timeout=300s'
+      - '--update-secrets=GEMINI_API_KEY=cinematch-gemini-key:latest,GOOGLE_MAPS_API_KEY=cinematch-maps-key:latest,RESEND_API_KEY=cinematch-resend-key:latest'
+      - '--set-env-vars=SUPPORT_EMAIL=suganyasai19@gmail.com'
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cinematch/cinematch-ai:latest'

@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment Variables (CRITICAL: Keeps your API keys safe)
+.env
+
+# Local Uploads & Media Library (Prevents pushing heavy video/audio files)
+uploads/
+
+# OS/System Files
+.DS_Store
+Thumbs.db
