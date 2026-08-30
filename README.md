@@ -18,7 +18,7 @@ Built for **Agentic Cinema: The Blockbuster Hackathon**
 
 ---
 ## 🚀 Live Links
-- **Live Application**: https://cinematch-ai-service-801225879799.us-central1.run.app
+- **Live Application**: https://cinematch-ai-live-801225879799.us-central1.run.app
 - **Demo Video**: https://vimeo.com/1222494860?share=copy&fl=sv&fe=ci#t=0
 ## 🎥 The Pitch
 
