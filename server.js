@@ -2439,16 +2439,16 @@ app.post('/api/production-planning', upload.none(), async (req, res) => {
                     };
                 }
 
-                // Log the step for the frontend
                 mcpSteps.push({
                     tool: mcpCall.name,
                     args: mcpCall.args,
                     dbResponse: mcpDatabaseResponse
                 });
 
-                // Return the required Gemini response structure
+                // Return the required Gemini response structure WITH THE CALL ID
                 return {
                     functionResponse: {
+                        id: mcpCall.id, // <-- CRITICAL FIX: Gemini needs this to map parallel requests
                         name: mcpCall.name,
                         response: mcpDatabaseResponse
                     }
