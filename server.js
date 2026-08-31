@@ -2462,7 +2462,6 @@ app.post('/api/production-planning', upload.none(), async (req, res) => {
             });
             finalAnswer = result.text;
         }
-
         res.json({ 
             success: true, 
             plan: finalAnswer, 
