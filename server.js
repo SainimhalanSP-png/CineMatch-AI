@@ -2390,70 +2390,75 @@ app.post('/api/production-planning', upload.none(), async (req, res) => {
         // 3. Real MCP Protocol Execution Loop — the agent may need several queries
         // (e.g. cast availability AND equipment status) before it can answer, so we
         // keep feeding tool results back until it stops asking, capped for safety.
+        // 3. Real MCP Protocol Execution Loop — Handle PARALLEL tool calls
         const MAX_TOOL_ROUNDS = 5;
         let round = 0;
 
         while (result.functionCalls && result.functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
             round++;
-            const mcpCall = result.functionCalls[0];
-            console.log(`MCP Tool Triggered by Agent (round ${round}):`, mcpCall.name, mcpCall.args);
+            console.log(`MCP Tool Triggered (round ${round}): Processing ${result.functionCalls.length} parallel calls.`);
 
-            // Normalize + validate collection name against the allowlist
-            const rawCol = (mcpCall.args.collection || 'scenes').toLowerCase().trim();
-            let mcpDatabaseResponse;
+            // Process ALL function calls simultaneously
+            const functionResponsesArray = await Promise.all(result.functionCalls.map(async (mcpCall) => {
+                const rawCol = (mcpCall.args.collection || 'scenes').toLowerCase().trim();
+                let mcpDatabaseResponse;
 
-            if (!PRODUCTION_PLANNING_COLLECTION_ALLOWLIST.includes(rawCol)) {
-                console.warn(`Blocked MCP query — "${rawCol}" is outside the production planning allowlist.`);
-                mcpDatabaseResponse = {
-                    collectionQueried: rawCol,
-                    recordsFound: 0,
-                    data: [],
-                    mcpStatus: `403 BLOCKED — "${rawCol}" is not a production planning collection. Allowed: ${PRODUCTION_PLANNING_COLLECTION_ALLOWLIST.join(', ')}.`
-                };
-            } else {
-                console.log(`Executing REAL MCP query against Firestore collection: "${rawCol}"`);
-                let records = [];
-                try {
-                    if (mcpCall.args.documentId) {
-                        const docSnap = await db.collection(rawCol).doc(mcpCall.args.documentId).get();
-                        if (docSnap.exists) {
-                            records.push({ id: docSnap.id, ...docSnap.data() });
+                if (!PRODUCTION_PLANNING_COLLECTION_ALLOWLIST.includes(rawCol)) {
+                    console.warn(`Blocked MCP query — "${rawCol}" is outside the production planning allowlist.`);
+                    mcpDatabaseResponse = {
+                        collectionQueried: rawCol,
+                        recordsFound: 0,
+                        data: [],
+                        mcpStatus: `403 BLOCKED — "${rawCol}" is not a production planning collection. Allowed: ${PRODUCTION_PLANNING_COLLECTION_ALLOWLIST.join(', ')}.`
+                    };
+                } else {
+                    console.log(`Executing REAL MCP query against Firestore collection: "${rawCol}"`);
+                    let records = [];
+                    try {
+                        if (mcpCall.args.documentId) {
+                            const docSnap = await db.collection(rawCol).doc(mcpCall.args.documentId).get();
+                            if (docSnap.exists) {
+                                records.push({ id: docSnap.id, ...docSnap.data() });
+                            }
+                        } else {
+                            const snapshot = await db.collection(rawCol).limit(10).get();
+                            snapshot.forEach(doc => {
+                                records.push({ id: doc.id, ...doc.data() });
+                            });
                         }
-                    } else {
-                        const snapshot = await db.collection(rawCol).limit(10).get();
-                        snapshot.forEach(doc => {
-                            records.push({ id: doc.id, ...doc.data() });
-                        });
+                    } catch (dbErr) {
+                        console.error(`Firestore query failed on collection "${rawCol}":`, dbErr.message);
+                        throw new Error(`MCP Database Failure: Could not read from "${rawCol}". ${dbErr.message}`);
                     }
-                } catch (dbErr) {
-                    console.error(`Firestore query failed on collection "${rawCol}":`, dbErr.message);
-                    throw new Error(`MCP Database Failure: Could not read from "${rawCol}". ${dbErr.message}`);
+
+                    mcpDatabaseResponse = {
+                        collectionQueried: rawCol,
+                        recordsFound: records.length,
+                        data: records.length > 0 ? records : [{ notice: `Collection "${rawCol}" queried successfully. 0 documents currently stored.` }],
+                        mcpStatus: "200 OK - LIVE FIRESTORE ACCESSED"
+                    };
                 }
 
-                mcpDatabaseResponse = {
-                    collectionQueried: rawCol,
-                    recordsFound: records.length,
-                    data: records.length > 0 ? records : [{ notice: `Collection "${rawCol}" queried successfully. 0 documents currently stored.` }],
-                    mcpStatus: "200 OK - LIVE FIRESTORE ACCESSED"
-                };
-            }
+                mcpSteps.push({
+                    tool: mcpCall.name,
+                    args: mcpCall.args,
+                    dbResponse: mcpDatabaseResponse
+                });
 
-            mcpSteps.push({
-                tool: mcpCall.name,
-                args: mcpCall.args,
-                dbResponse: mcpDatabaseResponse
-            });
-
-            // 4. Return the live database context back to Gemini and see if it needs
-            // another query or is ready to synthesize the plan.
-            console.log("Returning live MCP Firestore data back to Gemini...");
-            result = await chatSession.sendMessage({
-                message: [{
+                // Return the required Gemini response structure WITH THE CALL ID
+                return {
                     functionResponse: {
+                        id: mcpCall.id, // <-- CRITICAL FIX: Gemini needs this to map parallel requests
                         name: mcpCall.name,
                         response: mcpDatabaseResponse
                     }
-                }]
+                };
+            }));
+
+            // 4. Return ALL live database contexts back to Gemini at once
+            console.log("Returning live MCP Firestore data back to Gemini...");
+            result = await chatSession.sendMessage({
+                message: functionResponsesArray
             });
             finalAnswer = result.text;
         }
