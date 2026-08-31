@@ -6433,66 +6433,28 @@ document.addEventListener('DOMContentLoaded', () => {
    and dropdowns across page refreshes using localStorage.
    ============================================================ */
 document.addEventListener('DOMContentLoaded', () => {
-  const getStorageKey = (input) => {
-    const form = input.closest('form');
-    if (!form || !form.id) return null;
+  document.querySelectorAll('form').forEach(form => {
+    if (!form.id) return;
 
-    const name = input.name || input.id;
-    if (!name) return null;
+    form.querySelectorAll('textarea, input[type="text"], input[type="number"], select').forEach(input => {
+      const name = input.name || input.id;
+      if (!name) return;
 
-    return `cinematch_save_${form.id}_${name}`;
-  };
+      const storageKey = `cinematch_save_${form.id}_${name}`;
 
-  const restoreFormValues = () => {
-    document
-      .querySelectorAll('form textarea, form input[type="text"], form input[type="number"], form select')
-      .forEach(input => {
-        const key = getStorageKey(input);
-        if (!key) return;
+      const saved = localStorage.getItem(storageKey);
+      if (saved !== null) {
+        input.value = saved;
+      }
 
-        const saved = localStorage.getItem(key);
-        if (saved !== null) {
-          input.value = saved;
-        }
+      input.addEventListener('input', () => {
+        localStorage.setItem(storageKey, input.value);
       });
-  };
 
-  // Restore existing forms.
-  restoreFormValues();
-
-  // Save dynamically-created/replaced fields too.
-  document.addEventListener('input', (event) => {
-    const input = event.target.closest(
-      'form textarea, form input[type="text"], form input[type="number"]'
-    );
-    if (!input) return;
-
-    const key = getStorageKey(input);
-    if (key) {
-      localStorage.setItem(key, input.value);
-    }
-  });
-
-  document.addEventListener('change', (event) => {
-    const input = event.target.closest(
-      'form textarea, form input[type="text"], form input[type="number"], form select'
-    );
-    if (!input) return;
-
-    const key = getStorageKey(input);
-    if (key) {
-      localStorage.setItem(key, input.value);
-    }
-  });
-
-  // Restore values when CineMatch dynamically rebuilds/swaps panels.
-  const observer = new MutationObserver(() => {
-    restoreFormValues();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
+      input.addEventListener('change', () => {
+        localStorage.setItem(storageKey, input.value);
+      });
+    });
   });
 });
 </script>
